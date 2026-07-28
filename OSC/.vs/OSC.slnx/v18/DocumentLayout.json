@@ -1,0 +1,122 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\linker.ld||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:linker.ld||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\kernel.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:kernel\\kernel.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\interrupts.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:kernel\\drivers\\system\\interrupts.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\idt.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:kernel\\drivers\\system\\idt.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\idt.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:kernel\\drivers\\system\\idt.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\calldrivers.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:kernel\\drivers\\system\\calldrivers.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "linker.ld",
+              "DocumentMoniker": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\linker.ld",
+              "RelativeDocumentMoniker": "linker.ld",
+              "ToolTip": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\linker.ld",
+              "RelativeToolTip": "linker.ld",
+              "ViewState": "AgIAAAUAAAAAAAAAAAAkwB8AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-05-08T01:11:39.531Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "kernel.c",
+              "DocumentMoniker": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\kernel.c",
+              "RelativeDocumentMoniker": "kernel\\kernel.c",
+              "ToolTip": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\kernel.c",
+              "RelativeToolTip": "kernel\\kernel.c",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAGEAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-05-08T01:02:31.448Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "interrupts.c",
+              "DocumentMoniker": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\interrupts.c",
+              "RelativeDocumentMoniker": "kernel\\drivers\\system\\interrupts.c",
+              "ToolTip": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\interrupts.c",
+              "RelativeToolTip": "kernel\\drivers\\system\\interrupts.c",
+              "ViewState": "AgIAAIEAAAAAAAAAAAAAAJkAAAAJAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-05-08T01:00:19.828Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "idt.c",
+              "DocumentMoniker": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\idt.c",
+              "RelativeDocumentMoniker": "kernel\\drivers\\system\\idt.c",
+              "ToolTip": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\idt.c",
+              "RelativeToolTip": "kernel\\drivers\\system\\idt.c",
+              "ViewState": "AgIAAAYAAAAAAAAAAAAAAB4AAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-05-08T00:57:24.706Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "idt.h",
+              "DocumentMoniker": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\idt.h",
+              "RelativeDocumentMoniker": "kernel\\drivers\\system\\idt.h",
+              "ToolTip": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\idt.h",
+              "RelativeToolTip": "kernel\\drivers\\system\\idt.h",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
+              "WhenOpened": "2026-05-08T00:56:52.719Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "calldrivers.c",
+              "DocumentMoniker": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\calldrivers.c",
+              "RelativeDocumentMoniker": "kernel\\drivers\\system\\calldrivers.c",
+              "ToolTip": "C:\\Users\\Admin\\Desktop\\Projects\\ExistantOS\\OSC\\kernel\\drivers\\system\\calldrivers.c",
+              "RelativeToolTip": "kernel\\drivers\\system\\calldrivers.c",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-05-08T00:46:28.604Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

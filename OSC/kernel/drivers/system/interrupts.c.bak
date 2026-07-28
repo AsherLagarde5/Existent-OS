@@ -1,0 +1,154 @@
+BITS 64
+
+global idt_load
+
+extern irq0_handler
+extern irq1_handler
+extern irq2_handler
+extern irq3_handler
+extern irq4_handler
+extern irq5_handler
+extern irq6_handler
+extern irq7_handler
+extern irq8_handler
+extern irq9_handler
+extern irq10_handler
+extern irq11_handler
+extern irq12_handler
+extern irq13_handler
+extern irq14_handler
+extern irq15_handler
+
+; ======================== =
+; IDT LOAD
+; ======================== =
+idt_load:
+lidt[rdi]
+sti
+ret
+
+; ======================== =
+; COMMON IRQ HANDLER MACRO
+; ======================== =
+% macro IRQ 2
+global irq % 1
+
+irq % 1:
+push qword 0; dummy error code
+push qword % 2; IRQ number
+jmp irq_common
+% endmacro
+
+; ======================== =
+; IRQ DEFINITIONS
+; ======================== =
+IRQ 0, 0
+IRQ 1, 1
+IRQ 2, 2
+IRQ 3, 3
+IRQ 4, 4
+IRQ 5, 5
+IRQ 6, 6
+IRQ 7, 7
+IRQ 8, 8
+IRQ 9, 9
+IRQ 10, 10
+IRQ 11, 11
+IRQ 12, 12
+IRQ 13, 13
+IRQ 14, 14
+IRQ 15, 15
+
+; ======================== =
+; COMMON DISPATCH
+; ======================== =
+irq_common:
+push rax
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push rbp
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+
+mov rdi, [rsp + 120]; IRQ number(stack offset)
+
+cmp rdi, 0
+je.irq0
+cmp rdi, 1
+je.irq1
+cmp rdi, 2
+je.irq2
+cmp rdi, 3
+je.irq3
+cmp rdi, 4
+je.irq4
+cmp rdi, 5
+je.irq5
+cmp rdi, 6
+je.irq6
+cmp rdi, 7
+je.irq7
+cmp rdi, 8
+je.irq8
+cmp rdi, 9
+je.irq9
+cmp rdi, 10
+je.irq10
+cmp rdi, 11
+je.irq11
+cmp rdi, 12
+je.irq12
+cmp rdi, 13
+je.irq13
+cmp rdi, 14
+je.irq14
+cmp rdi, 15
+je.irq15
+
+jmp.done
+
+.irq0:  call irq0_handler  jmp.done
+.irq1 : call irq1_handler  jmp.done
+.irq2 : call irq2_handler  jmp.done
+.irq3 : call irq3_handler  jmp.done
+.irq4 : call irq4_handler  jmp.done
+.irq5 : call irq5_handler  jmp.done
+.irq6 : call irq6_handler  jmp.done
+.irq7 : call irq7_handler  jmp.done
+.irq8 : call irq8_handler  jmp.done
+.irq9 : call irq9_handler  jmp.done
+.irq10 : call irq10_handler jmp.done
+.irq11 : call irq11_handler jmp.done
+.irq12 : call irq12_handler jmp.done
+.irq13 : call irq13_handler jmp.done
+.irq14 : call irq14_handler jmp.done
+.irq15 : call irq15_handler jmp.done
+
+.done :
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+
+    add rsp, 16; remove IRQ number + dummy error code
+    iretq

@@ -1,0 +1,11 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\boot",
+    "\\kernel",
+    "\\kernel\\drivers",
+    "\\kernel\\drivers\\system"
+  ],
+  "SelectedNode": "\\linker.ld",
+  "PreviewInSolutionExplorer": false
+}
