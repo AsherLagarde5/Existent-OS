@@ -1,4 +1,5 @@
 #include "efi.h"
+#include "eosfs.h"
 
 EFI_HANDLE gImageHandle;
 EFI_SYSTEM_TABLE *gST;
@@ -13,19 +14,19 @@ typedef enum {
     TERMINAL_MODE_BASH = 1
 } TerminalMode;
 
-static const CHAR16 batch_prompt[] = {
-    'b','a','t','c','h','>',' ',0
-};
-
-static const CHAR16 bash_prompt[] = {
-    'b','a','s','h','>',' ',0
-};
+static void terminal_run_nano(void);
 
 #define TERMINAL_MAX_ARGS 8
 #define TERMINAL_MAX_LINE 128
+#define TERMINAL_MAX_EDITOR_LINES 8
+#define TERMINAL_DEFAULT_DRIVE 'B'
 
 static TerminalMode terminal_mode = TERMINAL_MODE_BATCH;
 static int terminal_echo_enabled = 1;
+static CHAR16 terminal_current_drive = TERMINAL_DEFAULT_DRIVE;
+static CHAR16 terminal_current_path[TERMINAL_MAX_LINE] = {
+    TERMINAL_DEFAULT_DRIVE, ':', '/', 0
+};
 
 static const CHAR16 autoexec_batch[] = {
     '@','e','c','h','o',' ','o','f','f','\r','\n',
@@ -74,9 +75,80 @@ static void terminal_write_line(const CHAR16 *text)
     terminal_write((const CHAR16[]){ '\r', '\n', 0 });
 }
 
+static void terminal_set_drive(CHAR16 drive)
+{
+    if (drive == 'B' || drive == 'C') {
+        terminal_current_drive = drive;
+        terminal_current_path[0] = drive;
+        terminal_current_path[1] = ':';
+        terminal_current_path[2] = '/';
+        terminal_current_path[3] = 0;
+    }
+}
+
+static int terminal_drive_prefix(const CHAR16 *path, CHAR16 *drive)
+{
+    if (path && path[0] >= 'A' && path[0] <= 'Z' && path[1] == ':') {
+        *drive = path[0];
+        return 1;
+    }
+
+    return 0;
+}
+
+static void terminal_show_drive_root(CHAR16 drive)
+{
+    eosfs_entry_t entries[EOSFS_MAX_ENTRIES];
+    int count = 0;
+    int i;
+
+    if (!eosfs_list_path(terminal_current_path, entries, EOSFS_MAX_ENTRIES, &count)) {
+        terminal_write_line((const CHAR16[]){ 'f','i','l','e',' ','s','y','s','t','e','m',' ','u','n','a','v','a','i','l','a','b','l','e',0 });
+        return;
+    }
+
+    if (drive == 'C') {
+        terminal_write_line((const CHAR16[]){ 'C',':','/',' ','-',' ','G','P','T',' ','d','i','s','k',' ','p','a','r','t','i','t','i','o','n',0 });
+    } else {
+        terminal_write_line((const CHAR16[]){ 'B',':','/',' ','-',' ','G','P','T',' ','d','i','s','k',' ','p','a','r','t','i','t','i','o','n',0 });
+    }
+
+    for (i = 0; i < count; ++i) {
+        terminal_write(entries[i].name);
+        terminal_write((const CHAR16[]){ ' ', 0 });
+        terminal_write(entries[i].type == EOSFS_ENTRY_DIR ? (const CHAR16[]){ '<','d','i','r','>',0 } : (const CHAR16[]){ '<','f','i','l','e','>',0 });
+        terminal_write_line((const CHAR16[]){ 0 });
+    }
+}
+
 static const CHAR16 *terminal_current_prompt(void)
 {
-    return (terminal_mode == TERMINAL_MODE_BASH) ? bash_prompt : batch_prompt;
+    static CHAR16 prompt[64];
+    int index = 0;
+
+    prompt[index++] = terminal_current_drive;
+    prompt[index++] = ':';
+    prompt[index++] = '/';
+    prompt[index++] = ' ';
+
+    if (terminal_mode == TERMINAL_MODE_BASH) {
+        prompt[index++] = 'b';
+        prompt[index++] = 'a';
+        prompt[index++] = 's';
+        prompt[index++] = 'h';
+    } else {
+        prompt[index++] = 'b';
+        prompt[index++] = 'a';
+        prompt[index++] = 't';
+        prompt[index++] = 'c';
+        prompt[index++] = 'h';
+    }
+
+    prompt[index++] = '>';
+    prompt[index++] = ' ';
+    prompt[index] = 0;
+
+    return prompt;
 }
 
 static void terminal_set_mode(TerminalMode mode)
@@ -190,6 +262,37 @@ static int terminal_execute_command(const CHAR16 *command)
         return 0;
     }
 
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'n','a','n','o',0 })) {
+        terminal_run_nano();
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'a','p','p','s',0 })) {
+        terminal_write_line((const CHAR16[]){ 'a','p','p','s',':',' ','n','a','n','o',',',' ','c','a','l','c',',',' ','c','a','t',',',' ','m','e','m','o',',',' ','t','o','d','o',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'c','a','l','c',0 })) {
+        terminal_write_line((const CHAR16[]){ 'c','a','l','c','u','l','a','t','o','r',' ','s','t','u','b',' ','r','e','a','d','y',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'c','a','t',0 })) {
+        terminal_write_arg_list(argv, argc, 1);
+        terminal_write_line((const CHAR16[]){ 0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'm','e','m','o',0 })) {
+        terminal_write_line((const CHAR16[]){ 'm','e','m','o',' ','a','p','p',' ','r','e','a','d','y',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 't','o','d','o',0 })) {
+        terminal_write_line((const CHAR16[]){ 't','o','d','o',':',' ','s','o','m','e',' ','m','o','r','e',' ','j','u','n','k',0 });
+        return 0;
+    }
+
     if (terminal_match_command(argv[0], (const CHAR16[]){ 's','t','a','t','u','s',0 })) {
         terminal_write_line((const CHAR16[]){ 'o','k',0 });
         return 0;
@@ -206,7 +309,11 @@ static int terminal_execute_command(const CHAR16 *command)
     }
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'd','i','r',0 }) || terminal_match_command(argv[0], (const CHAR16[]){ 'l','s',0 })) {
-        terminal_write_line((const CHAR16[]){ 'd','r','i','v','e','r','s',':',' ','a','c','p','i',',',' ','b','a','t','t','e','r','y',',',' ','m','o','u','s','e',',',' ','p','c','i',',',' ','s','t','o','r','a','g','e',',',' ','u','s','b',0 });
+        if (argc > 1 && terminal_drive_prefix(argv[1], &terminal_current_drive)) {
+            terminal_set_drive(terminal_current_drive);
+        }
+
+        terminal_show_drive_root(terminal_current_drive);
         return 0;
     }
 
@@ -258,7 +365,14 @@ static int terminal_execute_command(const CHAR16 *command)
     }
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'c','d',0 })) {
-        terminal_write_line((const CHAR16[]){ 'p','r','o','c','e','s','s',' ','w','o','r','k','i','n','g',' ','d','i','r','e','c','t','o','r','y',' ','c','h','a','n','g','e','d',0 });
+        if (argc > 1 && terminal_drive_prefix(argv[1], &terminal_current_drive)) {
+            terminal_set_drive(terminal_current_drive);
+            terminal_write_line((const CHAR16[]){ 'd','r','i','v','e',' ','s','e','t',' ','t','o',0 });
+            terminal_write_line(terminal_current_path);
+            return 0;
+        }
+
+        terminal_write_line(terminal_current_path);
         return 0;
     }
 
@@ -389,6 +503,43 @@ static int terminal_read_line(CHAR16 *line, size_t max_length)
     return 0;
 }
 
+static void terminal_run_nano(void)
+{
+    int line_count = 0;
+
+    terminal_write_line((const CHAR16[]){ 'n','a','n','o','-','l','i','k','e',' ','e','d','i','t','o','r',' ','e','n','t','e','r','e','d',0 });
+    terminal_write_line((const CHAR16[]){ 't','y','p','e',' ','l','i','n','e','s',',',' ','s','a','v','e',',',' ','o','r',' ','e','x','i','t',0 });
+
+    for (;;) {
+        CHAR16 line[TERMINAL_MAX_LINE];
+        size_t length;
+        terminal_write((const CHAR16[]){ 'n','a','n','o','>',' ',0 });
+        length = (size_t)terminal_read_line(line, sizeof(line) / sizeof(line[0]));
+
+        if (length == 0) {
+            continue;
+        }
+
+        if (terminal_match_command(line, (const CHAR16[]){ 'e','x','i','t',0 }) || terminal_match_command(line, (const CHAR16[]){ 'q','u','i','t',0 })) {
+            terminal_write_line((const CHAR16[]){ 'e','x','i','t','i','n','g',' ','n','a','n','o',0 });
+            return;
+        }
+
+        if (terminal_match_command(line, (const CHAR16[]){ 's','a','v','e',0 })) {
+            terminal_write_line((const CHAR16[]){ 's','a','v','e','d',' ','n','a','n','o',' ','b','u','f','f','e','r',0 });
+            return;
+        }
+
+        if (line_count >= TERMINAL_MAX_EDITOR_LINES) {
+            terminal_write_line((const CHAR16[]){ 'e','d','i','t','o','r',' ','b','u','f','f','e','r',' ','f','u','l','l',0 });
+            continue;
+        }
+
+        line_count++;
+        terminal_write_line((const CHAR16[]){ 'l','i','n','e',' ','a','d','d','e','d',0 });
+    }
+}
+
 static void terminal_run_shell(void)
 {
     CHAR16 line[TERMINAL_MAX_LINE];
@@ -424,6 +575,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     gImageHandle = ImageHandle;
     gST = SystemTable;
     gBS = SystemTable ? SystemTable->BootServices : NULL;
+
+    eosfs_init();
 
     terminal_write(boot_message);
     terminal_run_batch();
