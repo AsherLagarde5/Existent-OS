@@ -28,9 +28,9 @@ ISO_IMG = ExistentOS.iso
 all: $(EFI_BIN)
 
 # === Build UEFI loader ===
-$(EFI_BIN): $(EFI_OBJ)
+$(EFI_BIN): $(EFI_OBJ) $(KERNEL_OBJS_ALL)
 	mkdir -p EFI/BOOT
-	$(LD) $(LDFLAGS) -o $(EFI_ELF) $(EFI_OBJ)
+	$(LD) $(LDFLAGS) -o $(EFI_ELF) $(EFI_OBJ) $(KERNEL_OBJS_ALL)
 	$(OBJCOPY) \
 	  -j .text -j .data -j .rodata -j .bss \
 	  --subsystem=10 \

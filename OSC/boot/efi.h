@@ -23,11 +23,22 @@ typedef struct {
 } EFI_GUID;
 
 typedef struct {
+    uint16_t ScanCode;
+    CHAR16 UnicodeChar;
+} EFI_INPUT_KEY;
+
+struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
+    void *Reset;
+    EFI_STATUS (EFIAPI *ReadKeyStroke)(void *This, EFI_INPUT_KEY *Key);
+    void *WaitForKey;
+};
+
+typedef struct {
     void *Hdr;
     void *FirmwareVendor;
     uint32_t FirmwareRevision;
     EFI_HANDLE ConsoleInHandle;
-    void *ConIn;
+    struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL *ConIn;
     EFI_HANDLE ConsoleOutHandle;
     struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *ConOut;
     void *StandardErrorHandle;

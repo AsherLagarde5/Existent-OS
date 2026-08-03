@@ -6,7 +6,7 @@
 _start:
     xor %rbp, %rbp
     lea stack_top(%rip), %rsp
-    call kernel_main
+    call kernel_startup
 
 .hang:
     cli

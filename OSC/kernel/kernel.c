@@ -3,14 +3,15 @@
 #include "acpi.h"
 #include "idt.h"
 #include "cpu.h"
+#include "../boot/efi.h"
 
-void kernel_main(EfiMemoryMap *final_map)
+void kernel_startup(void)
 {
     /* At this point, ExitBootServices() MUST already be called.
        Hardware access, ACPI parsing, paging, APIC, etc. are now legal. */
 
     // Initialize paging + physical memory manager using final UEFI map
-    memory_init(final_map);
+    memory_init();
 
     // Parse ACPI tables (RSDP, XSDT, MADT, FADT, etc.)
     acpi_init();
