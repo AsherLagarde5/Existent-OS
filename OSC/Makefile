@@ -1,5 +1,5 @@
 CC      ?= x86_64-linux-gnu-gcc
-LD      ?= ld
+LD      ?= ld.lld
 OBJCOPY ?= objcopy
 QEMU    ?= qemu-system-x86_64
 
@@ -7,8 +7,6 @@ CFLAGS  = -ffreestanding -O2 -Wall -Wextra -m64 -mno-red-zone \
           -fno-stack-protector -fpic -fshort-wchar \
           -Iboot -Ikernel -Ikernel/drivers -Ikernel/drivers/system \
           -I/usr/include/efi -I/usr/include/efi/x86_64
-
-LDFLAGS = -nostdlib -T efi.ld -shared -Bsymbolic -znocombreloc
 
 # === Sources ===
 KERNEL_C_SRCS   := $(shell find kernel -name '*.c' 2>/dev/null)
@@ -31,10 +29,10 @@ all: $(EFI_BIN)
 # === Build the EFI application ===
 $(EFI_BIN): $(EFI_OBJ) $(KERNEL_OBJS)
 	mkdir -p EFI/BOOT
-	$(LD) $(LDFLAGS) -o $(EFI_ELF) $(EFI_OBJ) $(KERNEL_OBJS)
-	$(OBJCOPY) -j .text -j .sdata -j .data -j .rodata -j .bss \
-	           -j .rel -j .rela -j .reloc \
-	           --target=efi-app-x86_64 $(EFI_ELF) $(EFI_BIN)
+	$(CC) -nostdlib -Wl,-T,efi.ld -o $(EFI_ELF) $(EFI_OBJ) $(KERNEL_OBJS) \
+		-Wl,-shared -Wl,-Bsymbolic -Wl,-znocombreloc
+	$(OBJCOPY) -I elf64-x86-64 -O efi-app-x86_64 $(EFI_ELF) $(EFI_BIN) || \
+	$(OBJCOPY) --target=efi-app-x86_64 $(EFI_ELF) $(EFI_BIN)
 	rm -f $(EFI_ELF)
 
 $(EFI_OBJ): $(EFI_SRC)
@@ -46,16 +44,16 @@ $(EFI_OBJ): $(EFI_SRC)
 %.o: %.S
 	$(CC) $(CFLAGS) -c -x assembler-with-cpp $< -o $@
 
-# === Create a proper ESP (EFI System Partition) image ===
+# === Create a proper ESP image ===
 $(ESP_IMG): $(EFI_BIN)
-	dd if=/dev/zero of=$(ESP_IMG) bs=1M count=32
+	dd if=/dev/zero of=$(ESP_IMG) bs=1M count=32 status=none
 	mkfs.fat -F 32 $(ESP_IMG)
 	mmd -i $(ESP_IMG) ::/EFI
 	mmd -i $(ESP_IMG) ::/EFI/BOOT
 	mcopy -i $(ESP_IMG) $(EFI_BIN) ::/EFI/BOOT/BOOTX64.EFI
 
 # === Create a pure UEFI-bootable ISO ===
-iso: $(ESP_IMG)
+iso: $(EFI_BIN)
 	mkdir -p $(ISO_DIR)/EFI/BOOT
 	cp $(EFI_BIN) $(ISO_DIR)/EFI/BOOT/BOOTX64.EFI
 	xorriso -as mkisofs \
