@@ -1,5 +1,10 @@
 #include "pic.h"
 
+static void outb(uint16_t port, uint8_t value)
+{
+    __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
+}
+
 void pic_init(void)
 {
     /* No PIC initialization in pure UEFI mode; interrupt controllers are
@@ -13,5 +18,7 @@ void pic_send_eoi(uint8_t irq)
 
 void pic_disable(void)
 {
-    /* No-op under UEFI */
+    /* The legacy PIC may still be routing IRQs after firmware exits. */
+    outb(0x21, 0xff);
+    outb(0xa1, 0xff);
 }

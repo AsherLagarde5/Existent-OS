@@ -4,9 +4,12 @@ ENTRY(efi_main)
 
 SECTIONS
 {
-    . = 0;
+    /* A fixed image at address zero cannot be loaded by UEFI firmware.
+       Keep the image in conventional low memory until PE relocations are
+       introduced. */
+    . = 0x100000;
 
-    .text 0x0 : {
+    .text : {
         *(.text .text.*)
     }
 

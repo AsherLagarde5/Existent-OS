@@ -1,12 +1,14 @@
 #include "efi.h"
 #include "eosfs.h"
+#include "memory.h"
+#include "accounts.h"
 
 EFI_HANDLE gImageHandle;
 EFI_SYSTEM_TABLE *gST;
 EFI_BOOT_SERVICES *gBS;
 
 static const CHAR16 boot_message[] = {
-    'E','x','i','s','t','a','n','t','O','S',' ','E','F','I',' ','b','o','o','t','\r','\n',0
+    'F','i','s','i','x',' ','O','S',' ','E','F','I',' ','b','o','o','t','\r','\n',0
 };
 
 typedef enum {
@@ -15,6 +17,7 @@ typedef enum {
 } TerminalMode;
 
 static void terminal_run_nano(void);
+static int terminal_login(void);
 
 #define TERMINAL_MAX_ARGS 8
 #define TERMINAL_MAX_LINE 128
@@ -304,7 +307,7 @@ static int terminal_execute_command(const CHAR16 *command)
     }
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'v','e','r',0 })) {
-        terminal_write_line((const CHAR16[]){ 'E','x','i','s','t','e','n','t','O','S',' ','b','a','t','c','h',' ','t','e','r','m','i','n','a','l',' ','0','.','1',0 });
+        terminal_write_line((const CHAR16[]){ 'F','i','s','i','x',' ','O','S',' ','b','a','t','c','h',' ','t','e','r','m','i','n','a','l',' ','0','.','1',0 });
         return 0;
     }
 
@@ -402,12 +405,23 @@ static int terminal_execute_command(const CHAR16 *command)
     }
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'p','a','t','h',0 })) {
-        terminal_write_line((const CHAR16[]){ 'p','a','t','h',' ','s','e','t',' ','t','o',' ','E','x','i','s','t','e','n','t','O','S',0 });
+        terminal_write_line((const CHAR16[]){ 'p','a','t','h',' ','s','e','t',' ','t','o',' ','F','i','s','i','x',' ','O','S',0 });
         return 0;
     }
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'w','h','o','a','m','i',0 })) {
-        terminal_write_line((const CHAR16[]){ 'E','x','i','s','t','e','n','t','O','S',0 });
+        terminal_write_line(accounts_current_user());
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'u','s','e','r','s',0 })) {
+        for (int i = 0; i < accounts_count(); ++i) terminal_write_line(accounts_user_at(i));
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'u','s','e','r','a','d','d',0 })) {
+        if (argc == 3 && accounts_add(argv[1], argv[2])) terminal_write_line((const CHAR16[]){ 'u','s','e','r',' ','c','r','e','a','t','e','d',0 });
+        else terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','u','s','e','r','a','d','d',' ','<','n','a','m','e','>',' ','<','p','a','s','s','w','o','r','d','>',0 });
         return 0;
     }
 
@@ -544,7 +558,7 @@ static void terminal_run_shell(void)
 {
     CHAR16 line[TERMINAL_MAX_LINE];
 
-    terminal_write_line((const CHAR16[]){ 'E','x','i','s','t','e','n','t','O','S',' ','s','h','e','l','l',' ','r','e','a','d','y',0 });
+    terminal_write_line((const CHAR16[]){ 'F','i','s','i','x',' ','O','S',' ','s','h','e','l','l',' ','r','e','a','d','y',0 });
 
     for (;;) {
         size_t length;
@@ -564,11 +578,90 @@ static void terminal_run_shell(void)
 
 static void terminal_run_batch(void)
 {
-    terminal_write_line((const CHAR16[]){ 'E','x','i','s','t','e','n','t','O','S',' ','b','a','t','c','h',' ','t','e','r','m','i','n','a','l',' ','r','e','a','d','y',0 });
+    terminal_write_line((const CHAR16[]){ 'F','i','s','i','x',' ','O','S',' ','b','a','t','c','h',' ','t','e','r','m','i','n','a','l',' ','r','e','a','d','y',0 });
     terminal_run_batch_file(autoexec_batch);
 }
 
-extern void kernel_startup(void);
+static int terminal_login(void)
+{
+    CHAR16 username[32];
+    CHAR16 password[32];
+
+    for (;;) {
+        terminal_write((const CHAR16[]){ 'l','o','g','i','n',':',' ',0 });
+        if (terminal_read_line(username, sizeof(username) / sizeof(username[0])) == 0) continue;
+        terminal_write((const CHAR16[]){ 'p','a','s','s','w','o','r','d',':',' ',0 });
+        terminal_echo_enabled = 0;
+        terminal_read_line(password, sizeof(password) / sizeof(password[0]));
+        terminal_echo_enabled = 1;
+        if (accounts_login(username, password)) return 1;
+        terminal_write_line((const CHAR16[]){ 'i','n','v','a','l','i','d',' ','c','r','e','d','e','n','t','i','a','l','s',0 });
+    }
+}
+
+extern void kernel_startup(const void *boot_info);
+
+/* This is the only code allowed to use Boot Services during the handoff.
+   The map key is valid only for the exact map returned immediately before
+   ExitBootServices(), so do not print or allocate between those calls. */
+static EFI_STATUS efi_leave_boot_services(void)
+{
+    static uint8_t memory_map_buffer[128 * 1024];
+    EFI_GET_MEMORY_MAP get_memory_map;
+    EFI_EXIT_BOOT_SERVICES exit_boot_services;
+    size_t memory_map_size;
+    size_t map_key;
+    size_t descriptor_size;
+    uint32_t descriptor_version;
+    EFI_STATUS status;
+    uint64_t total_memory = 0;
+    uint8_t *cursor;
+
+    if (!gBS || !gBS->GetMemoryMap || !gBS->ExitBootServices) {
+        return EFI_LOAD_ERROR;
+    }
+
+    get_memory_map = (EFI_GET_MEMORY_MAP)gBS->GetMemoryMap;
+    exit_boot_services = (EFI_EXIT_BOOT_SERVICES)gBS->ExitBootServices;
+
+    for (;;) {
+        memory_map_size = sizeof(memory_map_buffer);
+        map_key = 0;
+        descriptor_size = 0;
+        descriptor_version = 0;
+        status = get_memory_map(&memory_map_size,
+                                (EFI_MEMORY_DESCRIPTOR *)memory_map_buffer,
+                                &map_key, &descriptor_size,
+                                &descriptor_version);
+        if (EFI_ERROR(status) || descriptor_size == 0) {
+            return status;
+        }
+
+        total_memory = 0;
+        cursor = memory_map_buffer;
+        for (size_t i = 0; i < memory_map_size / descriptor_size; ++i) {
+            EFI_MEMORY_DESCRIPTOR *descriptor = (EFI_MEMORY_DESCRIPTOR *)cursor;
+            if (descriptor->Type == EfiConventionalMemory ||
+                descriptor->Type == EfiLoaderCode ||
+                descriptor->Type == EfiLoaderData ||
+                descriptor->Type == EfiBootServicesCode ||
+                descriptor->Type == EfiBootServicesData) {
+                total_memory += descriptor->NumberOfPages * 4096ULL;
+            }
+            cursor += descriptor_size;
+        }
+
+        status = exit_boot_services(gImageHandle, map_key);
+        if (status == EFI_SUCCESS) {
+            memory_set_total_bytes(total_memory);
+            gBS = NULL;
+            return EFI_SUCCESS;
+        }
+        if (status != EFI_INVALID_PARAMETER) {
+            return status;
+        }
+    }
+}
 
 EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
@@ -577,11 +670,18 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     gBS = SystemTable ? SystemTable->BootServices : NULL;
 
     eosfs_init();
+    accounts_init();
 
     terminal_write(boot_message);
     terminal_run_batch();
+    terminal_login();
     terminal_run_shell();
 
-    kernel_startup();
-    return EFI_SUCCESS;
+    if (efi_leave_boot_services() != EFI_SUCCESS) {
+        terminal_write_line((const CHAR16[]){ 'f','a','i','l','e','d',' ','t','o',' ','s','t','a','r','t',' ','k','e','r','n','e','l',0 });
+        return EFI_LOAD_ERROR;
+    }
+
+    kernel_startup(NULL);
+    return EFI_SUCCESS; /* kernel_startup does not return */
 }
