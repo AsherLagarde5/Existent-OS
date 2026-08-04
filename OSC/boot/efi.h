@@ -200,6 +200,9 @@ typedef struct EFI_BOOT_SERVICES {
 
 typedef EFI_STATUS (EFIAPI *EFI_GET_MEMORY_MAP)(size_t *MemoryMapSize, EFI_MEMORY_DESCRIPTOR *MemoryMap, size_t *MapKey, size_t *DescriptorSize, uint32_t *DescriptorVersion);
 typedef EFI_STATUS (EFIAPI *EFI_EXIT_BOOT_SERVICES)(EFI_HANDLE ImageHandle, size_t MapKey);
+typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_PAGES)(uint32_t Type, EFI_MEMORY_TYPE MemoryType, size_t Pages, uint64_t *Memory);
+
+enum { AllocateAnyPages, AllocateMaxAddress, AllocateAddress };
 
 enum {
     EFI_ACPI_TABLE_GUID = 0,

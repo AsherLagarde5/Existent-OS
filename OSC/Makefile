@@ -13,7 +13,7 @@ CFLAGS  = -ffreestanding -O2 -Wall -Wextra -m64 -mno-red-zone \
 KERNEL_C_SRCS   := $(shell find kernel -name '*.c' 2>/dev/null)
 KERNEL_ASM_SRCS := $(shell find kernel -name '*.S' 2>/dev/null)
 KERNEL_OBJS     := $(KERNEL_C_SRCS:.c=.o) $(KERNEL_ASM_SRCS:.S=.o)
-KERNEL_RUNTIME_OBJS := $(filter-out kernel/drivers/eosfs.o,$(KERNEL_OBJS))
+KERNEL_RUNTIME_OBJS := $(filter-out kernel/drivers/eosfs.o kernel/drivers/accounts.o,$(KERNEL_OBJS))
 KERNEL_ELF := kernel/kernel.elf
 KERNEL_BIN := kernel.bin
 
@@ -21,6 +21,7 @@ EFI_SRC  = boot/efi_main.c
 EFI_OBJ  = boot/efi_main.o
 EFI_ELF  = EFI/BOOT/BOOTX64.elf
 EFI_BIN  = EFI/BOOT/BOOTX64.EFI
+LOADER_OBJS = $(EFI_OBJ) kernel/drivers/eosfs.o kernel/drivers/accounts.o
 
 ISO_DIR  = iso
 ISO_IMG  = FisixOS.iso
@@ -38,9 +39,9 @@ $(KERNEL_BIN): $(KERNEL_RUNTIME_OBJS) kernel/kernel.ld
 	rm -f $(KERNEL_ELF)
 
 # === Build the EFI application ===
-$(EFI_BIN): $(EFI_OBJ) $(KERNEL_OBJS)
+$(EFI_BIN): $(LOADER_OBJS)
 	mkdir -p EFI/BOOT
-	$(CC) -nostdlib -Wl,-T,efi.ld -o $(EFI_ELF) $(EFI_OBJ) $(KERNEL_OBJS) \
+	$(CC) -nostdlib -Wl,-T,efi.ld -o $(EFI_ELF) $(LOADER_OBJS) \
 		-Wl,-shared -Wl,-Bsymbolic -Wl,-znocombreloc
 	$(OBJCOPY) -I elf64-x86-64 -O efi-app-x86_64 --image-base 0x100000 $(EFI_ELF) $(EFI_BIN) || \
 	$(OBJCOPY) --target=efi-app-x86_64 --image-base 0x100000 $(EFI_ELF) $(EFI_BIN)

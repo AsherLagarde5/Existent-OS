@@ -2,6 +2,7 @@
 #include "eosfs.h"
 #include "memory.h"
 #include "accounts.h"
+#include "../kernel/boot_info.h"
 
 EFI_HANDLE gImageHandle;
 EFI_SYSTEM_TABLE *gST;
@@ -18,6 +19,7 @@ typedef enum {
 
 static void terminal_run_nano(void);
 static int terminal_login(void);
+static int terminal_read_line(CHAR16 *line, size_t max_length);
 
 #define TERMINAL_MAX_ARGS 8
 #define TERMINAL_MAX_LINE 128
@@ -173,7 +175,7 @@ static void terminal_write_arg_list(CHAR16 *argv[], int argc, int start_index)
 
 static int terminal_parse_command(const CHAR16 *command, CHAR16 *argv[], int max_args)
 {
-    CHAR16 line[TERMINAL_MAX_LINE];
+    static CHAR16 line[TERMINAL_MAX_LINE];
     size_t i = 0;
     int argc = 0;
     CHAR16 *cursor;
@@ -207,11 +209,128 @@ static int terminal_parse_command(const CHAR16 *command, CHAR16 *argv[], int max
     return argc;
 }
 
+static int terminal_contains(const CHAR16 *text, const CHAR16 *needle)
+{
+    if (*needle == 0) return 1;
+    while (*text) {
+        const CHAR16 *a = text;
+        const CHAR16 *b = needle;
+        while (*a && *b && *a == *b) { ++a; ++b; }
+        if (*b == 0) return 1;
+        ++text;
+    }
+    return 0;
+}
+
+static void terminal_copy_segment(CHAR16 *destination, const CHAR16 *start, const CHAR16 *end)
+{
+    size_t length = 0;
+    while (start < end && (*start == ' ' || *start == '\t')) ++start;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t')) --end;
+    while (start < end && length + 1 < TERMINAL_MAX_LINE) destination[length++] = *start++;
+    destination[length] = 0;
+}
+
+static const CHAR16 *terminal_end(const CHAR16 *text)
+{
+    while (*text) ++text;
+    return text;
+}
+
+static int terminal_try_pipeline(const CHAR16 *command)
+{
+    const CHAR16 *pipe = command;
+    CHAR16 left[TERMINAL_MAX_LINE];
+    CHAR16 right[TERMINAL_MAX_LINE];
+    CHAR16 *argv[TERMINAL_MAX_ARGS];
+    int argc;
+
+    while (*pipe && *pipe != '|') ++pipe;
+    if (*pipe != '|') return -1;
+    terminal_copy_segment(left, command, pipe);
+    terminal_copy_segment(right, pipe + 1, terminal_end(pipe + 1));
+    argc = terminal_parse_command(left, argv, TERMINAL_MAX_ARGS);
+    if (argc < 2 || !terminal_match_command(argv[0], (const CHAR16[]){'e','c','h','o',0})) {
+        terminal_write_line((const CHAR16[]){'p','i','p','e','s',' ','c','u','r','r','e','n','t','l','y',' ','s','u','p','p','o','r','t',' ','e','c','h','o',' ','|',' ','g','r','e','p',0});
+        return 0;
+    }
+    argc = terminal_parse_command(right, argv, TERMINAL_MAX_ARGS);
+    if (argc != 2 || !terminal_match_command(argv[0], (const CHAR16[]){'g','r','e','p',0})) {
+        terminal_write_line((const CHAR16[]){'u','s','a','g','e',':',' ','e','c','h','o',' ','<','t','e','x','t','>',' ','|',' ','g','r','e','p',' ','<','p','a','t','t','e','r','n','>',0});
+        return 0;
+    }
+    terminal_copy_segment(left, command + 5, pipe);
+    if (terminal_contains(left, argv[1])) terminal_write_line(left);
+    return 0;
+}
+
+static int terminal_open_file(const CHAR16 *path, UINT64 mode, UINT64 attributes, EFI_FILE_PROTOCOL **file)
+{
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs = 0;
+    EFI_FILE_PROTOCOL *root = 0;
+    EFI_STATUS status;
+    if (!gBS || !gBS->LocateProtocol) return 0;
+    status = gBS->LocateProtocol(&EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID, 0, (void **)&fs);
+    if (EFI_ERROR(status) || !fs || EFI_ERROR(fs->OpenVolume(fs, &root))) return 0;
+    status = root->Open(root, file, path, mode, attributes);
+    root->Close(root);
+    return !EFI_ERROR(status) && *file;
+}
+
+static int terminal_cat_file(const CHAR16 *path)
+{
+    EFI_FILE_PROTOCOL *file = 0;
+    uint8_t bytes[120];
+    CHAR16 text[121];
+    UINTN count;
+    if (!terminal_open_file(path, EFI_FILE_MODE_READ, 0, &file)) return 0;
+    do {
+        count = sizeof(bytes);
+        if (EFI_ERROR(file->Read(file, &count, bytes))) { file->Close(file); return 0; }
+        for (UINTN i = 0; i < count; ++i) text[i] = bytes[i];
+        text[count] = 0;
+        if (count) terminal_write(text);
+    } while (count == sizeof(bytes));
+    file->Close(file);
+    terminal_write_line((const CHAR16[]){0});
+    return 1;
+}
+
+static int terminal_touch_file(const CHAR16 *path)
+{
+    EFI_FILE_PROTOCOL *file = 0;
+    if (!terminal_open_file(path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, EFI_FILE_ARCHIVE, &file)) return 0;
+    file->Close(file);
+    return 1;
+}
+
+static int terminal_remove_file(const CHAR16 *path)
+{
+    EFI_FILE_PROTOCOL *file = 0;
+    EFI_STATUS status;
+    if (!terminal_open_file(path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0, &file)) return 0;
+    status = file->Delete(file);
+    return !EFI_ERROR(status);
+}
+
 static int terminal_execute_command(const CHAR16 *command)
 {
+    const CHAR16 *separator = command;
     CHAR16 *argv[TERMINAL_MAX_ARGS];
     int argc = terminal_parse_command(command, argv, TERMINAL_MAX_ARGS);
     const CHAR16 *args = terminal_command_args(command);
+
+    while (*separator && *separator != '&') ++separator;
+    if (*separator == '&') {
+        CHAR16 left[TERMINAL_MAX_LINE];
+        CHAR16 right[TERMINAL_MAX_LINE];
+        terminal_copy_segment(left, command, separator);
+        terminal_copy_segment(right, separator + 1, terminal_end(separator + 1));
+        terminal_execute_command(left);
+        return terminal_execute_command(right);
+    }
+
+    if (terminal_try_pipeline(command) >= 0) return 0;
 
     if (argc == 0) {
         return 0;
@@ -281,8 +400,17 @@ static int terminal_execute_command(const CHAR16 *command)
     }
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'c','a','t',0 })) {
-        terminal_write_arg_list(argv, argc, 1);
-        terminal_write_line((const CHAR16[]){ 0 });
+        if (argc != 2 || !terminal_cat_file(argv[1])) terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','c','a','t',' ','<','f','i','l','e','>',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 't','o','u','c','h',0 })) {
+        if (argc != 2 || !terminal_touch_file(argv[1])) terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','t','o','u','c','h',' ','<','f','i','l','e','>',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'r','m',0 })) {
+        if (argc != 2 || !terminal_remove_file(argv[1])) terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','r','m',' ','<','f','i','l','e','>',0 });
         return 0;
     }
 
@@ -414,6 +542,15 @@ static int terminal_execute_command(const CHAR16 *command)
         return 0;
     }
 
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'g','r','e','p',0 })) {
+        if (argc < 3) {
+            terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','g','r','e','p',' ','<','p','a','t','t','e','r','n','>',' ','<','t','e','x','t','>',0 });
+            return 0;
+        }
+        for (int i = 2; i < argc; ++i) if (terminal_contains(argv[i], argv[1])) terminal_write_line(argv[i]);
+        return 0;
+    }
+
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'u','s','e','r','s',0 })) {
         for (int i = 0; i < accounts_count(); ++i) terminal_write_line(accounts_user_at(i));
         return 0;
@@ -422,6 +559,28 @@ static int terminal_execute_command(const CHAR16 *command)
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'u','s','e','r','a','d','d',0 })) {
         if (argc == 3 && accounts_add(argv[1], argv[2])) terminal_write_line((const CHAR16[]){ 'u','s','e','r',' ','c','r','e','a','t','e','d',0 });
         else terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','u','s','e','r','a','d','d',' ','<','n','a','m','e','>',' ','<','p','a','s','s','w','o','r','d','>',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'p','a','s','s','w','d',0 })) {
+        CHAR16 old_password[32];
+        CHAR16 new_password[32];
+        terminal_write((const CHAR16[]){ 'c','u','r','r','e','n','t',' ','p','a','s','s','w','o','r','d',':',' ',0 });
+        terminal_echo_enabled = 0;
+        terminal_read_line(old_password, sizeof(old_password) / sizeof(old_password[0]));
+        terminal_echo_enabled = 1;
+        terminal_write((const CHAR16[]){ 'n','e','w',' ','p','a','s','s','w','o','r','d',':',' ',0 });
+        terminal_echo_enabled = 0;
+        terminal_read_line(new_password, sizeof(new_password) / sizeof(new_password[0]));
+        terminal_echo_enabled = 1;
+        terminal_write_line(accounts_change_password(old_password, new_password)
+            ? (const CHAR16[]){ 'p','a','s','s','w','o','r','d',' ','u','p','d','a','t','e','d',0 }
+            : (const CHAR16[]){ 'p','a','s','s','w','o','r','d',' ','n','o','t',' ','c','h','a','n','g','e','d',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'l','o','g','i','n',0 })) {
+        terminal_login();
         return 0;
     }
 
@@ -599,12 +758,46 @@ static int terminal_login(void)
     }
 }
 
-extern void kernel_startup(const void *boot_info);
+typedef void (*kernel_entry_t)(const kernel_boot_info_t *boot_info);
+
+#define KERNEL_LOAD_ADDRESS 0x200000ULL
+#define KERNEL_MAX_BYTES    (1024ULL * 1024ULL)
+
+static EFI_STATUS efi_load_kernel(void)
+{
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs = 0;
+    EFI_FILE_PROTOCOL *root = 0;
+    EFI_FILE_PROTOCOL *kernel = 0;
+    EFI_ALLOCATE_PAGES allocate_pages;
+    uint64_t address = KERNEL_LOAD_ADDRESS;
+    UINTN bytes = KERNEL_MAX_BYTES;
+    EFI_STATUS status;
+
+    if (!gBS || !gBS->LocateProtocol || !gBS->AllocatePages) return EFI_LOAD_ERROR;
+    status = gBS->LocateProtocol(&EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID, 0, (void **)&fs);
+    if (EFI_ERROR(status) || !fs) return status;
+    status = fs->OpenVolume(fs, &root);
+    if (EFI_ERROR(status) || !root) return status;
+    status = root->Open(root, &kernel, (const CHAR16[]){'\\','k','e','r','n','e','l','.','b','i','n',0}, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(status) || !kernel) { root->Close(root); return status; }
+
+    allocate_pages = (EFI_ALLOCATE_PAGES)gBS->AllocatePages;
+    status = allocate_pages(AllocateAddress, EfiLoaderData, KERNEL_MAX_BYTES / 4096, &address);
+    if (!EFI_ERROR(status)) {
+        uint8_t *memory = (uint8_t *)(uintptr_t)address;
+        for (UINTN i = 0; i < KERNEL_MAX_BYTES; ++i) memory[i] = 0;
+        status = kernel->Read(kernel, &bytes, memory);
+        if (bytes == 0) status = EFI_LOAD_ERROR;
+    }
+    kernel->Close(kernel);
+    root->Close(root);
+    return status;
+}
 
 /* This is the only code allowed to use Boot Services during the handoff.
    The map key is valid only for the exact map returned immediately before
    ExitBootServices(), so do not print or allocate between those calls. */
-static EFI_STATUS efi_leave_boot_services(void)
+static EFI_STATUS efi_leave_boot_services(kernel_boot_info_t *boot_info)
 {
     static uint8_t memory_map_buffer[128 * 1024];
     EFI_GET_MEMORY_MAP get_memory_map;
@@ -653,7 +846,7 @@ static EFI_STATUS efi_leave_boot_services(void)
 
         status = exit_boot_services(gImageHandle, map_key);
         if (status == EFI_SUCCESS) {
-            memory_set_total_bytes(total_memory);
+            boot_info->memory_bytes = total_memory;
             gBS = NULL;
             return EFI_SUCCESS;
         }
@@ -677,11 +870,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
     terminal_login();
     terminal_run_shell();
 
-    if (efi_leave_boot_services() != EFI_SUCCESS) {
+    kernel_boot_info_t boot_info = { 0, 0 };
+    if (efi_load_kernel() != EFI_SUCCESS || efi_leave_boot_services(&boot_info) != EFI_SUCCESS) {
         terminal_write_line((const CHAR16[]){ 'f','a','i','l','e','d',' ','t','o',' ','s','t','a','r','t',' ','k','e','r','n','e','l',0 });
         return EFI_LOAD_ERROR;
     }
 
-    kernel_startup(NULL);
+    ((kernel_entry_t)(uintptr_t)KERNEL_LOAD_ADDRESS)(&boot_info);
     return EFI_SUCCESS; /* kernel_startup does not return */
 }
