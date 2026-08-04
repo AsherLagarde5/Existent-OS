@@ -20,6 +20,7 @@ typedef enum {
 static void terminal_run_nano(void);
 static int terminal_login(void);
 static int terminal_read_line(CHAR16 *line, size_t max_length);
+static int terminal_execute_command(const CHAR16 *command);
 
 #define TERMINAL_MAX_ARGS 8
 #define TERMINAL_MAX_LINE 128
@@ -313,6 +314,47 @@ static int terminal_remove_file(const CHAR16 *path)
     return !EFI_ERROR(status);
 }
 
+static int terminal_write_file(const CHAR16 *path, CHAR16 *argv[], int argc, int start, int append)
+{
+    EFI_FILE_PROTOCOL *file = 0;
+    uint8_t bytes[TERMINAL_MAX_LINE];
+    UINTN count = 0;
+    if (!terminal_open_file(path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, EFI_FILE_ARCHIVE, &file)) return 0;
+    if (append) file->SetPosition(file, (UINT64)-1);
+    else if (EFI_ERROR(file->SetPosition(file, 0))) { file->Close(file); return 0; }
+    for (int i = start; i < argc && count + 2 < sizeof(bytes); ++i) {
+        if (i > start) bytes[count++] = ' ';
+        for (int j = 0; argv[i][j] && count + 2 < sizeof(bytes); ++j) bytes[count++] = (uint8_t)argv[i][j];
+    }
+    bytes[count++] = '\n';
+    if (EFI_ERROR(file->Write(file, &count, bytes))) { file->Close(file); return 0; }
+    if (file->Flush) file->Flush(file);
+    file->Close(file);
+    return 1;
+}
+
+static int terminal_source_file(const CHAR16 *path)
+{
+    EFI_FILE_PROTOCOL *file = 0;
+    uint8_t bytes[4096];
+    UINTN count = sizeof(bytes) - 1;
+    CHAR16 line[TERMINAL_MAX_LINE];
+    size_t line_length = 0;
+    if (!terminal_open_file(path, EFI_FILE_MODE_READ, 0, &file)) return 0;
+    if (EFI_ERROR(file->Read(file, &count, bytes))) { file->Close(file); return 0; }
+    file->Close(file);
+    for (UINTN i = 0; i < count; ++i) {
+        if (bytes[i] == '\r') continue;
+        if (bytes[i] == '\n') {
+            line[line_length] = 0;
+            if (line_length) terminal_execute_command(line);
+            line_length = 0;
+        } else if (line_length + 1 < TERMINAL_MAX_LINE) line[line_length++] = bytes[i];
+    }
+    if (line_length) { line[line_length] = 0; terminal_execute_command(line); }
+    return 1;
+}
+
 static int terminal_execute_command(const CHAR16 *command)
 {
     const CHAR16 *separator = command;
@@ -411,6 +453,17 @@ static int terminal_execute_command(const CHAR16 *command)
 
     if (terminal_match_command(argv[0], (const CHAR16[]){ 'r','m',0 })) {
         if (argc != 2 || !terminal_remove_file(argv[1])) terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','r','m',' ','<','f','i','l','e','>',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 'w','r','i','t','e',0 }) || terminal_match_command(argv[0], (const CHAR16[]){ 'a','p','p','e','n','d',0 })) {
+        int append = terminal_match_command(argv[0], (const CHAR16[]){ 'a','p','p','e','n','d',0 });
+        if (argc < 3 || !terminal_write_file(argv[1], argv, argc, 2, append)) terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','w','r','i','t','e','|','a','p','p','e','n','d',' ','<','f','i','l','e','>',' ','<','t','e','x','t',0 });
+        return 0;
+    }
+
+    if (terminal_match_command(argv[0], (const CHAR16[]){ 's','o','u','r','c','e',0 })) {
+        if (argc != 2 || !terminal_source_file(argv[1])) terminal_write_line((const CHAR16[]){ 'u','s','a','g','e',':',' ','s','o','u','r','c','e',' ','<','s','c','r','i','p','t','>',0 });
         return 0;
     }
 
