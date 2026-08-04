@@ -1,64 +1,88 @@
-CC ?= x86_64-linux-gnu-gcc
-LD ?= ld
+CC      ?= x86_64-linux-gnu-gcc
+LD      ?= ld
 OBJCOPY ?= objcopy
-QEMU ?= qemu-system-x86_64
+QEMU    ?= qemu-system-x86_64
 
-CFLAGS = -ffreestanding -O2 -Wall -Wextra -m64 -mno-red-zone \
-         -Iboot -Ikernel -Ikernel/drivers -Ikernel/drivers/system \
-         -I/usr/include/efi -I/usr/include/efi/x86_64
+CFLAGS  = -ffreestanding -O2 -Wall -Wextra -m64 -mno-red-zone \
+          -fno-stack-protector -fpic -fshort-wchar \
+          -Iboot -Ikernel -Ikernel/drivers -Ikernel/drivers/system \
+          -I/usr/include/efi -I/usr/include/efi/x86_64
 
-LDFLAGS = -nostdlib -T efi.ld
+LDFLAGS = -nostdlib -T efi.ld -shared -Bsymbolic -znocombreloc
 
-# === Kernel sources (recursive) ===
-KERNEL_C_SRCS := $(shell find kernel -name '*.c')
-KERNEL_ASM_SRCS := $(shell find kernel -name '*.S')
+# === Sources ===
+KERNEL_C_SRCS   := $(shell find kernel -name '*.c' 2>/dev/null)
+KERNEL_ASM_SRCS := $(shell find kernel -name '*.S' 2>/dev/null)
+KERNEL_OBJS     := $(KERNEL_C_SRCS:.c=.o) $(KERNEL_ASM_SRCS:.S=.o)
 
-KERNEL_OBJS := $(KERNEL_C_SRCS:.c=.o)
-KERNEL_ASM_OBJS := $(KERNEL_ASM_SRCS:.S=.o)
-KERNEL_OBJS_ALL := $(KERNEL_OBJS) $(KERNEL_ASM_OBJS)
+EFI_SRC  = boot/efi_main.c
+EFI_OBJ  = boot/efi_main.o
+EFI_ELF  = EFI/BOOT/BOOTX64.elf
+EFI_BIN  = EFI/BOOT/BOOTX64.EFI
 
-# === Bootloader sources ===
-EFI_SRC = boot/efi_main.c
-EFI_OBJ = boot/efi_main.o
-EFI_ELF = EFI/BOOT/BOOTX64.elf
-EFI_BIN = EFI/BOOT/BOOTX64.EFI
-ISO_DIR = iso
-ISO_IMG = ExistentOS.iso
+ISO_DIR  = iso
+ISO_IMG  = ExistentOS.iso
+ESP_IMG  = esp.img
+
+.PHONY: all clean iso run run-iso
 
 all: $(EFI_BIN)
 
-# === Build UEFI loader ===
-$(EFI_BIN): $(EFI_OBJ) $(KERNEL_OBJS_ALL)
+# === Build the EFI application ===
+$(EFI_BIN): $(EFI_OBJ) $(KERNEL_OBJS)
 	mkdir -p EFI/BOOT
-	$(LD) $(LDFLAGS) -o $(EFI_ELF) $(EFI_OBJ) $(KERNEL_OBJS_ALL)
-	$(OBJCOPY) \
-	  -j .text -j .data -j .rodata -j .bss \
-	  --subsystem=10 \
-	  -I elf64-x86-64 -O pei-x86-64 \
-	  $(EFI_ELF) $(EFI_BIN)
+	$(LD) $(LDFLAGS) -o $(EFI_ELF) $(EFI_OBJ) $(KERNEL_OBJS)
+	$(OBJCOPY) -j .text -j .sdata -j .data -j .rodata -j .bss \
+	           -j .rel -j .rela -j .reloc \
+	           --target=efi-app-x86_64 $(EFI_ELF) $(EFI_BIN)
 	rm -f $(EFI_ELF)
 
 $(EFI_OBJ): $(EFI_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# === Kernel build ===
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.S
 	$(CC) $(CFLAGS) -c -x assembler-with-cpp $< -o $@
 
-# === Build ISO image ===
-iso: $(EFI_BIN)
-	mkdir -p $(ISO_DIR)/EFI/BOOT $(ISO_DIR)/boot/grub
-	cp $(EFI_BIN) $(ISO_DIR)/EFI/BOOT/BOOTX64.EFI
-	printf 'set timeout=0\nmenuentry "ExistentOS" {\n    chainloader /EFI/BOOT/BOOTX64.EFI\n}\n' > $(ISO_DIR)/boot/grub/grub.cfg
-	xorriso -as mkisofs -R -f -o $(ISO_IMG) -eltorito-alt-boot -e $(EFI_BIN) -no-emul-boot -isohybrid-gpt-basdat $(ISO_DIR)
+# === Create a proper ESP (EFI System Partition) image ===
+$(ESP_IMG): $(EFI_BIN)
+	dd if=/dev/zero of=$(ESP_IMG) bs=1M count=32
+	mkfs.fat -F 32 $(ESP_IMG)
+	mmd -i $(ESP_IMG) ::/EFI
+	mmd -i $(ESP_IMG) ::/EFI/BOOT
+	mcopy -i $(ESP_IMG) $(EFI_BIN) ::/EFI/BOOT/BOOTX64.EFI
 
-# === Run in QEMU ===
+# === Create a pure UEFI-bootable ISO ===
+iso: $(ESP_IMG)
+	mkdir -p $(ISO_DIR)/EFI/BOOT
+	cp $(EFI_BIN) $(ISO_DIR)/EFI/BOOT/BOOTX64.EFI
+	xorriso -as mkisofs \
+		-R -f \
+		-e EFI/BOOT/BOOTX64.EFI \
+		-no-emul-boot \
+		-isohybrid-gpt-basdat \
+		-o $(ISO_IMG) \
+		$(ISO_DIR)
+
+# === Run just the EFI binary (fastest for testing) ===
 run: $(EFI_BIN)
-	$(QEMU) -bios /usr/share/ovmf/OVMF_CODE.fd \
-		-drive file=fat:rw:EFI,format=raw,if=virtio
+	$(QEMU) -m 512 \
+		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=OVMF_VARS.fd \
+		-drive format=raw,file=fat:rw:EFI \
+		-net none
+
+# === Run the full ISO ===
+run-iso: iso
+	$(QEMU) -m 512 \
+		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=OVMF_VARS.fd \
+		-cdrom $(ISO_IMG) \
+		-boot d \
+		-net none
 
 clean:
-	rm -rf EFI $(ISO_DIR) $(ISO_IMG) $(KERNEL_OBJS_ALL) $(EFI_OBJ)
+	rm -rf EFI $(ISO_DIR) $(ISO_IMG) $(ESP_IMG) \
+	       $(KERNEL_OBJS) $(EFI_OBJ) $(EFI_ELF)
